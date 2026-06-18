@@ -104,19 +104,14 @@ function initFirebase(){
 }
 
 // ───── PAÑOS PRECARGADOS (editables) ─────
-// Cada paño tiene 3 árboles fijos representativos (códigos persistentes) que se
-// cuentan cada año, más 5 árboles aleatorios que cambian en cada conteo.
+// El contador puede modificarlos en "Paños". Se guardan localmente.
 var PANOS_DEFAULT = [
-  { id:'p1', nombre:'Cuartel 1', variedad:'Regina', plantas:0, fijos:['F1','F2','F3'] },
-  { id:'p2', nombre:'Cuartel 2', variedad:'Skeena', plantas:0, fijos:['F1','F2','F3'] },
-  { id:'p3', nombre:'Cuartel 3', variedad:'Lapins', plantas:0, fijos:['F1','F2','F3'] },
-  { id:'p4', nombre:'Cuartel 4', variedad:'Kordia', plantas:0, fijos:['F1','F2','F3'] }
+  { id:'p1', nombre:'Cuartel 1', variedad:'Regina', plantas:0 },
+  { id:'p2', nombre:'Cuartel 2', variedad:'Skeena', plantas:0 },
+  { id:'p3', nombre:'Cuartel 3', variedad:'Lapins', plantas:0 },
+  { id:'p4', nombre:'Cuartel 4', variedad:'Kordia', plantas:0 }
 ];
 var VARIEDADES = ['Regina','Skeena','Lapins','Kordia','Bing','Santina','Sweetheart','Rainier'];
-// Etapas fenológicas del cerezo (para identificar cada campaña de conteo)
-var ETAPAS = ['Yema hinchada','Yema algodonosa','Botón blanco','Plena flor','Caída de pétalos','Cuaja','Post-cuaja','Fruto en crecimiento'];
-var N_FIJOS = 3;       // árboles fijos representativos por paño
-var N_ALEATORIOS = 5;  // árboles al azar por conteo (esta temporada)
 
 // ───── ESTADO ─────
 var APP = {
@@ -129,7 +124,6 @@ var APP = {
   estimActual: null,   // estimación en edición
   usuarios: {},        // usuarios editables (de Firebase + semilla)
   valActual: 0,
-  tipoArbol: null,     // 'fijo' | 'aleatorio' en la sesión activa
   varFiltro: ''
 };
 
@@ -233,10 +227,6 @@ function renderInicio(){
           return '<option value="'+esc(p.id)+'">'+esc(p.nombre)+' ('+esc(p.variedad)+')</option>';
         }).join('')+
       '</select></div>'+
-      '<div class="field"><label>Etapa fenológica</label><select id="cte-etapa">'+
-        ETAPAS.map(function(e){return '<option value="'+esc(e)+'">'+esc(e)+'</option>';}).join('')+
-      '</select></div>'+
-      '<div style="font-size:12px;color:#888;margin-bottom:10px">Se cuentan '+N_FIJOS+' árboles fijos (representativos) + '+N_ALEATORIOS+' al azar = '+(N_FIJOS+N_ALEATORIOS)+' árboles.</div>'+
       '<button class="btn btn-green" onclick="iniciarSesion()">▶️ Iniciar conteo</button>'+
     '</div>'+
     '<button class="btn btn-gray" onclick="verLista()">📋 Registros guardados'+(pend>0?(' ('+pend+' por subir)'):'')+'</button>'+
@@ -253,78 +243,44 @@ function setVarFiltro(v){ APP.varFiltro=v; render(); }
 function iniciarSesion(){
   var sel=document.getElementById('cte-pano'); var id=sel?sel.value:'';
   if(!id){ toast('Seleccione un paño'); return; }
-  var etapa=document.getElementById('cte-etapa').value||'';
   var pano=APP.panos.find(function(p){return String(p.id)===String(id);});
   if(!pano) return;
-  var fijos = (pano.fijos && pano.fijos.length) ? pano.fijos.slice() : ['F1','F2','F3'];
   APP.sesion = { id:uid(), panoId:pano.id, panoNombre:pano.nombre, variedad:pano.variedad,
-    etapa:etapa, fijosCodigos:fijos,
-    fechaInicio:new Date().toISOString(), usuario:APP.user.nombre, usuarioId:APP.user.id,
-    arboles:[], sincronizado:false };
-  APP.valActual=0; APP.tipoArbol='fijo'; APP.vista='sesion'; render();
+    fechaInicio:new Date().toISOString(), usuario:APP.user.nombre, usuarioId:APP.user.id, arboles:[], sincronizado:false };
+  APP.valActual=0; APP.vista='sesion'; render();
 }
 function renderSesion(){
   var s=APP.sesion;
   var n=s.arboles.length;
-  var nFijos=s.arboles.filter(function(a){return a.tipo==='fijo';}).length;
-  var nAzar=s.arboles.filter(function(a){return a.tipo==='aleatorio';}).length;
   var sum=s.arboles.reduce(function(a,x){return a+(x.centros||0);},0);
   var prom=n?(sum/n):0;
-  // Determinar el siguiente árbol sugerido: completar fijos primero, luego aleatorios
-  var sugerido, sugCodigo, sugColor;
-  if(nFijos < N_FIJOS){ sugerido='fijo'; sugCodigo=(s.fijosCodigos&&s.fijosCodigos[nFijos])||('F'+(nFijos+1)); sugColor='#0a6ed1'; }
-  else if(nAzar < N_ALEATORIOS){ sugerido='aleatorio'; sugCodigo='Azar '+(nAzar+1); sugColor='#e9730c'; }
-  else { sugerido='extra'; sugCodigo='Extra'; sugColor='#6a7889'; }
-  // Tipo activo seleccionado (por defecto el sugerido)
-  var tipoActivo = APP.tipoArbol || sugerido;
-
   return '<div class="hdr-mini">'+
       '<div style="font-size:17px;font-weight:800">'+esc(s.panoNombre)+'</div>'+
-      '<div style="font-size:12px;opacity:.85">'+esc(s.variedad)+' · '+esc(s.etapa||'')+'</div>'+
-      '<div style="font-size:11px;opacity:.75;margin-top:3px">Fijos: '+nFijos+'/'+N_FIJOS+' · Al azar: '+nAzar+'/'+N_ALEATORIOS+' · Total: '+n+'</div>'+
+      '<div style="font-size:12px;opacity:.85">'+esc(s.variedad)+' · '+n+' árbol(es) · prom '+prom.toFixed(1)+'</div>'+
     '</div>'+
-    // Selector de tipo de árbol
-    '<div style="display:flex;gap:8px;margin-bottom:10px">'+
-      '<button onclick="setTipoArbol(\'fijo\')" style="flex:1;padding:11px;border-radius:10px;border:2px solid '+(tipoActivo==='fijo'?'#0a6ed1':'#d9d9d9')+';background:'+(tipoActivo==='fijo'?'#f0f7ff':'#fff')+';font-weight:700;font-size:13px;cursor:pointer;color:#0a6ed1">📍 Fijo ('+nFijos+'/'+N_FIJOS+')</button>'+
-      '<button onclick="setTipoArbol(\'aleatorio\')" style="flex:1;padding:11px;border-radius:10px;border:2px solid '+(tipoActivo==='aleatorio'?'#e9730c':'#d9d9d9')+';background:'+(tipoActivo==='aleatorio'?'#fff7ef':'#fff')+';font-weight:700;font-size:13px;cursor:pointer;color:#e9730c">🎲 Al azar ('+nAzar+'/'+N_ALEATORIOS+')</button>'+
-    '</div>'+
-    '<div class="counter-box" style="border-color:'+(tipoActivo==='fijo'?'#0a6ed1':'#e9730c')+';background:'+(tipoActivo==='fijo'?'#f0f7ff':'#fff7ef')+'">'+
-      '<div style="text-align:center;font-weight:800;color:'+(tipoActivo==='fijo'?'#0a6ed1':'#e9730c')+';margin-bottom:4px">'+(tipoActivo==='fijo'?'📍 Árbol fijo '+((s.fijosCodigos&&s.fijosCodigos[nFijos])||('F'+(nFijos+1))):'🎲 Árbol al azar '+(nAzar+1))+'</div>'+
+    '<div class="counter-box">'+
+      '<div style="text-align:center;font-weight:800;color:#0a6ed1;margin-bottom:4px">🌳 Árbol N° '+(n+1)+'</div>'+
       '<div style="text-align:center;font-size:12px;color:#888;margin-bottom:6px">Centros florales</div>'+
       '<div class="counter">'+
         '<button class="minus" onclick="ajustar(-1)">−</button>'+
         '<div class="val" id="cte-val">'+APP.valActual+'</div>'+
-        '<button class="plus" style="background:'+(tipoActivo==='fijo'?'#0a6ed1':'#e9730c')+'" onclick="ajustar(1)">+</button>'+
+        '<button class="plus" onclick="ajustar(1)">+</button>'+
       '</div>'+
       '<input type="number" inputmode="numeric" id="cte-input" value="'+APP.valActual+'" onchange="setVal(this.value)" style="width:100%;padding:11px;font-size:17px;text-align:center;border:2px solid #d9d9d9;border-radius:10px;margin-top:12px">'+
     '</div>'+
     '<button class="btn btn-green" onclick="guardarArbol()">✓ Guardar árbol y siguiente</button>'+
-    (n>0?'<div class="card"><div style="font-weight:700;color:#354a5f;margin-bottom:6px">Árboles contados ('+n+')</div>'+
-      s.arboles.map(function(a,i){
-        var badge = a.tipo==='fijo' ? '<span class="pill" style="background:#e7f0fb;color:#0854a0">📍 '+esc(a.codigo||'Fijo')+'</span>' : '<span class="pill" style="background:#fbe9d6;color:#9a5000">🎲 '+esc(a.codigo||'Azar')+'</span>';
-        return '<div class="arbol-row"><span>'+badge+'</span><span style="font-weight:700">'+a.centros+(a.lat?' 📍':'')+'</span><button onclick="quitarArbol('+i+')" style="background:none;border:none;color:#c0392b;font-size:17px;cursor:pointer">✕</button></div>';
-      }).join('')+
+    (n>0?'<div class="card"><div style="font-weight:700;color:#354a5f;margin-bottom:6px">Árboles contados</div>'+
+      s.arboles.map(function(a,i){return '<div class="arbol-row"><span>Árbol '+a.n+'</span><span style="font-weight:700">'+a.centros+(a.lat?' 📍':'')+'</span><button onclick="quitarArbol('+i+')" style="background:none;border:none;color:#c0392b;font-size:17px;cursor:pointer">✕</button></div>';}).join('')+
     '</div>':'')+
     '<button class="btn btn-primary" onclick="finalizarSesion()">🏁 Finalizar y guardar</button>'+
     '<button class="btn btn-gray" onclick="cancelarSesion()">Cancelar</button>';
 }
-function setTipoArbol(t){ APP.tipoArbol=t; render(); }
 function ajustar(d){ APP.valActual=Math.max(0,APP.valActual+d); var v=document.getElementById('cte-val'); if(v)v.textContent=APP.valActual; var i=document.getElementById('cte-input'); if(i)i.value=APP.valActual; }
 function setVal(v){ APP.valActual=Math.max(0,parseInt(v)||0); var e=document.getElementById('cte-val'); if(e)e.textContent=APP.valActual; }
 function guardarArbol(){
   if(APP.valActual<=0){ toast('Ingrese los centros del árbol'); return; }
-  var s=APP.sesion;
-  var nFijos=s.arboles.filter(function(a){return a.tipo==='fijo';}).length;
-  var nAzar=s.arboles.filter(function(a){return a.tipo==='aleatorio';}).length;
-  // Tipo elegido (o sugerido)
-  var tipo = APP.tipoArbol;
-  if(!tipo){ tipo = nFijos<N_FIJOS ? 'fijo' : 'aleatorio'; }
-  // Código según tipo
-  var codigo;
-  if(tipo==='fijo'){ codigo=(s.fijosCodigos&&s.fijosCodigos[nFijos])||('F'+(nFijos+1)); }
-  else { codigo='A'+(nAzar+1); }
-  var n=s.arboles.length+1;
-  var reg={n:n,tipo:tipo,codigo:codigo,centros:APP.valActual,lat:null,lng:null,fecha:new Date().toISOString()};
+  var n=APP.sesion.arboles.length+1;
+  var reg={n:n,centros:APP.valActual,lat:null,lng:null,fecha:new Date().toISOString()};
   var seguro=(window.isSecureContext===true)||location.protocol==='https:';
   if(navigator.geolocation && seguro){
     toast('Capturando GPS...');
@@ -333,12 +289,9 @@ function guardarArbol(){
     }, function(){ finArbol(reg); }, {timeout:12000,enableHighAccuracy:true,maximumAge:0});
   } else { finArbol(reg); }
 }
-function finArbol(reg){
-  APP.sesion.arboles.push(reg); APP.valActual=0; APP.tipoArbol=null; render();
-  toast(reg.codigo+': '+reg.centros+' centros'+(reg.lat?' · GPS ✓':''));
-}
+function finArbol(reg){ APP.sesion.arboles.push(reg); APP.valActual=0; render(); toast('Árbol '+reg.n+(reg.lat?' con GPS ✓':' guardado')); }
 function quitarArbol(i){ APP.sesion.arboles.splice(i,1); APP.sesion.arboles.forEach(function(a,idx){a.n=idx+1;}); render(); }
-function cancelarSesion(){ if(confirm('¿Descartar el conteo en curso?')){ APP.sesion=null; APP.tipoArbol=null; APP.vista='inicio'; render(); } }
+function cancelarSesion(){ if(confirm('¿Descartar el conteo en curso?')){ APP.sesion=null; APP.vista='inicio'; render(); } }
 
 function finalizarSesion(){
   var s=APP.sesion;
@@ -346,12 +299,6 @@ function finalizarSesion(){
   s.fechaFin=new Date().toISOString();
   var sum=s.arboles.reduce(function(a,x){return a+(x.centros||0);},0);
   s.promedioCentros=sum/s.arboles.length;
-  // Promedios separados por tipo (útil para análisis)
-  var fijos=s.arboles.filter(function(a){return a.tipo==='fijo';});
-  var azar=s.arboles.filter(function(a){return a.tipo==='aleatorio';});
-  s.promFijos = fijos.length ? fijos.reduce(function(a,x){return a+x.centros;},0)/fijos.length : null;
-  s.promAleatorios = azar.length ? azar.reduce(function(a,x){return a+x.centros;},0)/azar.length : null;
-  s.nFijos=fijos.length; s.nAleatorios=azar.length;
   s.nArboles=s.arboles.length;
   s.sincronizado=false;
   APP.conteos.push(s);
@@ -426,14 +373,11 @@ function renderLista(){
     return '<div class="card">'+
       '<div style="display:flex;justify-content:space-between;align-items:start">'+
         '<div><div style="font-size:17px;font-weight:800;color:#23303d">'+esc(s.panoNombre)+'</div>'+
-          '<div style="font-size:12px;color:#666">'+esc(s.variedad)+' · '+fecha+' '+hora+' · '+esc(s.usuario||'')+'</div>'+
-          (s.etapa?'<div style="font-size:11px;margin-top:3px"><span class="pill" style="background:#e7f0fb;color:#0854a0">🌱 '+esc(s.etapa)+'</span></div>':'')+'</div>'+
+          '<div style="font-size:12px;color:#666">'+esc(s.variedad)+' · '+fecha+' '+hora+' · '+esc(s.usuario||'')+'</div></div>'+
         '<div>'+sync+'</div></div>'+
-      '<div style="display:flex;gap:14px;margin-top:9px;font-size:14px;flex-wrap:wrap">'+
+      '<div style="display:flex;gap:16px;margin-top:9px;font-size:14px">'+
         '<div><span style="color:#888">Árboles:</span> <strong>'+(s.nArboles||s.arboles.length)+'</strong></div>'+
         '<div><span style="color:#888">Prom:</span> <strong style="color:#0a6ed1">'+(s.promedioCentros!=null?s.promedioCentros.toFixed(1):'-')+'</strong></div>'+
-        (s.promFijos!=null?'<div><span style="color:#888">📍 Fijos:</span> <strong style="color:#0854a0">'+s.promFijos.toFixed(1)+'</strong></div>':'')+
-        (s.promAleatorios!=null?'<div><span style="color:#888">🎲 Azar:</span> <strong style="color:#e9730c">'+s.promAleatorios.toFixed(1)+'</strong></div>':'')+
       '</div>'+gps+
       '<button class="btn btn-red" style="margin-top:10px;padding:9px" onclick="eliminarSesion(\''+s.id+'\')">🗑️ Eliminar</button>'+
     '</div>';
@@ -452,15 +396,11 @@ function eliminarSesion(id){
 
 // ───── EXPORTAR EXCEL (CSV simple, sin librerías) ─────
 function exportarExcel(){
-  var rows=[['Paño','Variedad','Etapa fenológica','Fecha','Usuario','Tipo árbol','Código árbol','Centros','Latitud','Longitud','Prom sesión','Prom fijos','Prom azar']];
+  var rows=[['Paño','Variedad','Fecha','Usuario','N° árbol','Centros','Latitud','Longitud','Promedio sesión']];
   APP.conteos.forEach(function(s){
     (s.arboles||[]).forEach(function(a){
-      rows.push([s.panoNombre,s.variedad,s.etapa||'',(a.fecha||'').slice(0,10),s.usuario||'',
-        a.tipo==='fijo'?'Fijo':(a.tipo==='aleatorio'?'Al azar':''),a.codigo||'',a.centros,
-        a.lat!=null?a.lat:'',a.lng!=null?a.lng:'',
-        s.promedioCentros!=null?s.promedioCentros.toFixed(2):'',
-        s.promFijos!=null?s.promFijos.toFixed(2):'',
-        s.promAleatorios!=null?s.promAleatorios.toFixed(2):'']);
+      rows.push([s.panoNombre,s.variedad,(a.fecha||'').slice(0,10),s.usuario||'',a.n,a.centros,
+        a.lat!=null?a.lat:'',a.lng!=null?a.lng:'',s.promedioCentros!=null?s.promedioCentros.toFixed(2):'']);
     });
   });
   var csv=rows.map(function(r){return r.map(function(c){var s=String(c==null?'':c);return /[",;\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;}).join(';');}).join('\n');
@@ -479,20 +419,10 @@ function renderPanos(){
       '<div class="field"><label>Nombre / Cuartel</label><input type="text" id="pn-nombre" placeholder="Ej: Cuartel 5"></div>'+
       '<div class="field"><label>Variedad</label><input type="text" id="pn-var" list="pn-var-dl" placeholder="Ej: Regina"><datalist id="pn-var-dl">'+VARIEDADES.map(function(v){return '<option value="'+esc(v)+'">';}).join('')+'</datalist></div>'+
       '<div class="field"><label>N° de plantas</label><input type="number" id="pn-plantas" inputmode="numeric" min="0" placeholder="Ej: 1250"></div>'+
-      '<div class="field"><label>Códigos de los 3 árboles fijos (separados por coma)</label><input type="text" id="pn-fijos" placeholder="Ej: F1, F2, F3"></div>'+
       '<button class="btn btn-green" onclick="agregarPano()">+ Agregar</button>'+
     '</div>'+
     '<div class="card"><div style="font-weight:800;color:#23303d;margin-bottom:8px">Paños ('+APP.panos.length+')</div>'+
-      APP.panos.map(function(p){
-        var fijos=(p.fijos&&p.fijos.length)?p.fijos.join(', '):'F1, F2, F3';
-        return '<div style="padding:9px 0;border-bottom:1px solid #eee">'+
-          '<div style="display:flex;justify-content:space-between;align-items:center">'+
-            '<div><strong>'+esc(p.nombre)+'</strong> · '+esc(p.variedad)+' · '+(p.plantas||0).toLocaleString('es-CL')+' pl</div>'+
-            '<button onclick="eliminarPano(\''+p.id+'\')" style="background:none;border:none;color:#c0392b;font-size:16px;cursor:pointer">✕</button>'+
-          '</div>'+
-          '<div style="font-size:12px;color:#888;margin-top:3px">📍 Árboles fijos: '+esc(fijos)+' <button onclick="editarFijos(\''+p.id+'\')" style="background:none;border:none;color:#0a6ed1;font-size:12px;cursor:pointer;font-weight:700">editar</button></div>'+
-        '</div>';
-      }).join('')+
+      APP.panos.map(function(p){return '<div class="arbol-row"><span><strong>'+esc(p.nombre)+'</strong> · '+esc(p.variedad)+' · '+(p.plantas||0).toLocaleString('es-CL')+' pl</span><button onclick="eliminarPano(\''+p.id+'\')" style="background:none;border:none;color:#c0392b;font-size:16px;cursor:pointer">✕</button></div>';}).join('')+
     '</div>';
   return html;
 }
@@ -500,20 +430,9 @@ function agregarPano(){
   var nombre=(document.getElementById('pn-nombre').value||'').trim();
   var variedad=(document.getElementById('pn-var').value||'').trim();
   var plantas=parseInt(document.getElementById('pn-plantas').value)||0;
-  var fijosTxt=(document.getElementById('pn-fijos').value||'').trim();
-  var fijos = fijosTxt ? fijosTxt.split(',').map(function(x){return x.trim();}).filter(Boolean) : ['F1','F2','F3'];
   if(!nombre||!variedad){ toast('Complete nombre y variedad'); return; }
-  APP.panos.push({id:uid(),nombre:nombre,variedad:variedad,plantas:plantas,fijos:fijos});
+  APP.panos.push({id:uid(),nombre:nombre,variedad:variedad,plantas:plantas});
   lsSet('cc_panos',APP.panos); render(); toast('Paño agregado');
-}
-function editarFijos(id){
-  var p=APP.panos.find(function(x){return x.id===id;});
-  if(!p) return;
-  var actual=(p.fijos&&p.fijos.length)?p.fijos.join(', '):'F1, F2, F3';
-  var nuevo=prompt('Códigos de los 3 árboles fijos representativos (separados por coma):', actual);
-  if(nuevo==null) return;
-  p.fijos = nuevo.split(',').map(function(x){return x.trim();}).filter(Boolean);
-  lsSet('cc_panos',APP.panos); render(); toast('Árboles fijos actualizados');
 }
 function eliminarPano(id){
   if(!confirm('¿Eliminar este paño?')) return;
