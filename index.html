@@ -50,6 +50,27 @@
   .pill{padding:2px 9px;border-radius:10px;font-size:11px;font-weight:700}
   .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;display:flex;align-items:center;justify-content:center;padding:18px}
   .modal-card{background:#fff;border-radius:14px;max-width:420px;width:100%;padding:22px;max-height:88vh;overflow-y:auto}
+  /* Layout con barra lateral de administración */
+  .layout{display:flex;width:100%;gap:0}
+  .sidebar{width:230px;flex-shrink:0;background:#2b3d4f;min-height:calc(100vh - 49px);padding:14px 10px;position:sticky;top:49px;align-self:flex-start}
+  .sidebar .side-group{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#7d93a8;padding:14px 10px 6px}
+  .side-link{display:flex;align-items:center;gap:9px;width:100%;text-align:left;background:none;border:none;color:#dbe5ee;font-size:14px;font-weight:600;padding:11px 12px;border-radius:9px;cursor:pointer;margin-bottom:2px}
+  .side-link:hover{background:rgba(255,255,255,.08)}
+  .side-link.active{background:#1a7e3e;color:#fff}
+  .side-badge{margin-left:auto;background:#e9730c;color:#fff;font-size:11px;font-weight:700;padding:1px 7px;border-radius:9px}
+  .main-area{flex:1;min-width:0;padding:0 8px;display:flex;justify-content:center}
+  .main-area .wrap{width:100%;max-width:620px;padding:14px 12px 30px}
+  /* Botón menú móvil */
+  .menu-btn{display:none;background:rgba(255,255,255,.2);color:#fff;border:none;font-size:20px;padding:6px 12px;border-radius:8px;cursor:pointer;margin-right:10px}
+  @media(max-width:760px){
+    .layout{display:block}
+    .sidebar{position:fixed;left:0;top:49px;bottom:0;z-index:60;width:250px;transform:translateX(-100%);transition:transform .25s;box-shadow:2px 0 16px rgba(0,0,0,.3);min-height:auto}
+    .sidebar.open{transform:translateX(0)}
+    .menu-btn{display:inline-block}
+    .sidebar-overlay{display:none;position:fixed;inset:49px 0 0 0;background:rgba(0,0,0,.4);z-index:55}
+    .sidebar-overlay.open{display:block}
+    .main-area{padding:0}
+  }
 </style>
 </head>
 <body>
@@ -92,6 +113,7 @@ var FB_CONFIG = {
 var COLECCION = 'conteos_centros';   // colección independiente
 var COLECCION_ESTIM = 'estimaciones_centros';  // estimaciones (versiones guardadas)
 var COLECCION_USERS = 'usuarios_conteo';  // usuarios de la app (editables, sincronizados)
+var COLECCION_PANOS = 'panos_centros';  // paños/cuarteles (sincronizados en la nube)
 var db = null, fbOk = false;
 
 function initFirebase(){
@@ -152,7 +174,7 @@ function init(){
   APP.usuarios = lsGet('cc_usuarios', null) || JSON.parse(JSON.stringify(USUARIOS_SEED));
   cargarUsuariosNube();  // refresca desde Firebase si hay conexión
   var savedUser = lsGet('cc_user', null);
-  if(savedUser){ APP.user = savedUser; render(); cargarDesdeNube(); cargarEstimNube(); }
+  if(savedUser){ APP.user = savedUser; render(); cargarPanosNube(); cargarDesdeNube(); cargarEstimNube(); }
   else { renderLogin(); }
 }
 
@@ -193,7 +215,10 @@ function render(){
   var online = navigator.onLine && fbOk;
   var pend = APP.conteos.filter(function(x){return !x.sincronizado;}).length;
   var top = '<div class="topbar">'+
-      '<div><div class="t-title">🌸 Conteo Centros</div><div class="t-sub">'+esc(APP.user.nombre)+' · '+esc(ROLES[APP.user.rol]||APP.user.rol)+'</div></div>'+
+      '<div style="display:flex;align-items:center">'+
+        '<button class="menu-btn" onclick="toggleMenu()">☰</button>'+
+        '<div><div class="t-title">🌸 Conteo Centros</div><div class="t-sub">'+esc(APP.user.nombre)+' · '+esc(ROLES[APP.user.rol]||APP.user.rol)+'</div></div>'+
+      '</div>'+
       '<button class="btn btn-sm" style="background:rgba(255,255,255,.2);color:#fff;margin-bottom:0" onclick="logout()">Salir</button>'+
     '</div>';
   var sync = '<div class="sync-bar" style="background:'+(online?'#d1f0d8':'#fde8c8')+';color:'+(online?'#0a6e2e':'#7a4200')+'">'+
@@ -207,14 +232,55 @@ function render(){
   else if(APP.vista==='estimVer' && APP.estimActual){ body=renderEstimVer(); }
   else if(APP.vista==='config'){ body=renderConfig(); }
   else { body=renderInicio(); }
-  document.getElementById('app').innerHTML = top + '<div class="wrap">'+sync+body+'</div>';
+  document.getElementById('app').innerHTML = top +
+    '<div class="layout">'+ renderSidebar() +
+      '<div class="sidebar-overlay" id="side-ov" onclick="toggleMenu()"></div>'+
+      '<div class="main-area"><div class="wrap">'+sync+body+'</div></div>'+
+    '</div>';
+}
+
+function renderSidebar(){
+  var pend = APP.conteos.filter(function(x){return !x.sincronizado;}).length;
+  function link(vista,icono,texto,badge){
+    var act=(APP.vista===vista)?' active':'';
+    return '<button class="side-link'+act+'" onclick="navSide(\''+vista+'\')">'+icono+' <span>'+texto+'</span>'+(badge?'<span class="side-badge">'+badge+'</span>':'')+'</button>';
+  }
+  var html='<div class="sidebar" id="sidebar">';
+  html+='<div class="side-group">App</div>';
+  html+=link('inicio','📝','Nuevo conteo','');
+  html+=link('lista','📋','Registros guardados',pend>0?pend:'');
+  if(esSupervisor()) html+=link('estim','📈','Estimación','');
+  if(esAdmin()){
+    html+='<div class="side-group">Administración</div>';
+    html+=link('panos','⚙️','Editar paños','');
+    html+=link('config','👥','Configuración y usuarios','');
+  }
+  if(navigator.onLine&&fbOk){
+    html+='<div class="side-group">Sincronización</div>';
+    html+='<button class="side-link" onclick="sincronizar();subirTodosLosPanos()">☁️ <span>Subir a la nube</span></button>';
+  }
+  html+='</div>';
+  return html;
+}
+
+function navSide(vista){
+  if((vista==='panos'||vista==='config')&&!esAdmin()){ toast('Solo administradores'); return; }
+  if(vista==='estim'&&!esSupervisor()){ toast('Solo supervisores y administradores'); return; }
+  APP.vista=vista; render(); cerrarMenu();
+}
+function toggleMenu(){
+  var sb=document.getElementById('sidebar'), ov=document.getElementById('side-ov');
+  if(sb){ sb.classList.toggle('open'); if(ov) ov.classList.toggle('open'); }
+}
+function cerrarMenu(){
+  var sb=document.getElementById('sidebar'), ov=document.getElementById('side-ov');
+  if(sb){ sb.classList.remove('open'); if(ov) ov.classList.remove('open'); }
 }
 
 function variedades(){ return [...new Set(APP.panos.map(function(p){return p.variedad;}).filter(Boolean))].sort(); }
 
 function renderInicio(){
   var vars = variedades();
-  var pend = APP.conteos.filter(function(x){return !x.sincronizado;}).length;
   return '<div class="card">'+
       '<div style="font-size:19px;font-weight:800;color:#23303d;margin-bottom:4px">Nuevo conteo</div>'+
       '<div style="font-size:13px;color:#777;margin-bottom:15px">Seleccione el paño y cuente los centros florales por árbol.</div>'+
@@ -228,14 +294,7 @@ function renderInicio(){
         }).join('')+
       '</select></div>'+
       '<button class="btn btn-green" onclick="iniciarSesion()">▶️ Iniciar conteo</button>'+
-    '</div>'+
-    '<button class="btn btn-gray" onclick="verLista()">📋 Registros guardados'+(pend>0?(' ('+pend+' por subir)'):'')+'</button>'+
-    // Estimación: admin y supervisor
-    (esSupervisor()?'<button class="btn btn-gray" onclick="verEstim()">📈 Estimación de producción</button>':'')+
-    (navigator.onLine&&fbOk?'<button class="btn btn-primary" onclick="sincronizar()">☁️ Subir a la nube</button>':'')+
-    // Editar paños y Configuración: solo admin
-    (esAdmin()?'<button class="btn btn-gray" onclick="verPanos()">⚙️ Editar paños</button>':'')+
-    (esAdmin()?'<button class="btn btn-gray" onclick="verConfig()">👥 Configuración y usuarios</button>':'');
+    '</div>';
 }
 function setVarFiltro(v){ APP.varFiltro=v; render(); }
 
@@ -431,13 +490,54 @@ function agregarPano(){
   var variedad=(document.getElementById('pn-var').value||'').trim();
   var plantas=parseInt(document.getElementById('pn-plantas').value)||0;
   if(!nombre||!variedad){ toast('Complete nombre y variedad'); return; }
-  APP.panos.push({id:uid(),nombre:nombre,variedad:variedad,plantas:plantas});
-  lsSet('cc_panos',APP.panos); render(); toast('Paño agregado');
+  var p={id:uid(),nombre:nombre,variedad:variedad,plantas:plantas};
+  APP.panos.push(p);
+  lsSet('cc_panos',APP.panos);
+  subirPano(p);
+  render(); toast('Paño agregado'+(fbOk&&navigator.onLine?' y subido':''));
 }
 function eliminarPano(id){
   if(!confirm('¿Eliminar este paño?')) return;
   APP.panos=APP.panos.filter(function(p){return p.id!==id;});
-  lsSet('cc_panos',APP.panos); render();
+  lsSet('cc_panos',APP.panos);
+  if(fbOk&&navigator.onLine){ db.collection(COLECCION_PANOS).doc(id).delete().catch(function(){}); }
+  render();
+}
+// ───── PAÑOS: sincronización con la nube ─────
+function subirPano(p){
+  if(!fbOk||!navigator.onLine) return;
+  db.collection(COLECCION_PANOS).doc(String(p.id)).set(p).catch(function(e){ console.warn('Error subiendo paño:',e); });
+}
+function subirTodosLosPanos(){
+  if(!fbOk||!navigator.onLine){ toast('Sin conexión'); return; }
+  APP.panos.forEach(function(p){ db.collection(COLECCION_PANOS).doc(String(p.id)).set(p).catch(function(){}); });
+  toast('Subiendo '+APP.panos.length+' paño(s) a la nube...');
+}
+function cargarPanosNube(){
+  if(!fbOk||!navigator.onLine) return;
+  db.collection(COLECCION_PANOS).get().then(function(snap){
+    if(snap.empty){
+      // Primera vez en la nube: subir lo que haya local (recupera los paños del dispositivo)
+      if(APP.panos && APP.panos.length){
+        APP.panos.forEach(function(p){ db.collection(COLECCION_PANOS).doc(String(p.id)).set(p).catch(function(){}); });
+      }
+      return;
+    }
+    var remotos={};
+    snap.forEach(function(doc){ remotos[doc.id]=doc.data(); });
+    var ids=APP.panos.map(function(x){return String(x.id);});
+    // Agregar remotos que no estén local
+    Object.keys(remotos).forEach(function(id){
+      if(ids.indexOf(id)<0){ APP.panos.push(remotos[id]); }
+    });
+    // Subir locales que no estén en la nube (recupera datos atrapados en este dispositivo)
+    var remIds=Object.keys(remotos);
+    APP.panos.forEach(function(p){
+      if(remIds.indexOf(String(p.id))<0){ db.collection(COLECCION_PANOS).doc(String(p.id)).set(p).catch(function(){}); }
+    });
+    lsSet('cc_panos',APP.panos);
+    if(APP.vista==='panos'||APP.vista==='inicio') render();
+  }).catch(function(e){ console.warn('Error cargando paños nube:',e); });
 }
 
 
