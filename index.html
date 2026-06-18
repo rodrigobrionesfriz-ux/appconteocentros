@@ -1,0 +1,802 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Conteo de Centros Florales</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#eef2f6;color:#32363a;font-size:16px}
+  .wrap{max-width:560px;margin:0 auto;padding:10px 8px 30px}
+  /* Login */
+  .login-box{max-width:380px;margin:40px auto;background:#fff;border-radius:16px;padding:28px 24px;box-shadow:0 4px 20px rgba(0,0,0,.1)}
+  .login-box h1{font-size:20px;color:#354a5f;margin-bottom:4px;text-align:center}
+  .login-box .sub{font-size:13px;color:#888;text-align:center;margin-bottom:22px}
+  .login-box input{width:100%;padding:14px;font-size:16px;border:2px solid #d9d9d9;border-radius:10px;margin-bottom:12px}
+  /* Topbar */
+  .topbar{background:#354a5f;color:#fff;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:50}
+  .topbar .t-title{font-size:16px;font-weight:800}
+  .topbar .t-sub{font-size:11px;opacity:.8}
+  /* Botones */
+  .btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:15px;font-size:16px;font-weight:700;border:none;border-radius:12px;cursor:pointer;margin-bottom:10px;box-shadow:0 2px 6px rgba(0,0,0,.12)}
+  .btn:active{transform:scale(.98)}
+  .btn-primary{background:#0a6ed1;color:#fff}
+  .btn-green{background:#1a7e3e;color:#fff}
+  .btn-gray{background:#fff;color:#354a5f;border:2px solid #d9d9d9}
+  .btn-amber{background:#e9730c;color:#fff}
+  .btn-red{background:#fff;color:#c0392b;border:2px solid #f0b8b8}
+  .btn-sm{padding:9px 14px;font-size:13px;width:auto;margin-bottom:0}
+  /* Campos */
+  .field{margin-bottom:12px}
+  .field label{display:block;font-size:13px;font-weight:700;color:#354a5f;margin-bottom:5px}
+  .field select,.field input{width:100%;padding:13px;font-size:16px;border:2px solid #d9d9d9;border-radius:10px;background:#fff;color:#32363a}
+  /* Cards */
+  .card{background:#fff;border:1px solid #e5e5e5;border-radius:12px;padding:16px;margin-bottom:12px}
+  .sync-bar{display:flex;align-items:center;gap:8px;padding:9px 13px;border-radius:10px;font-size:12px;font-weight:600;margin-bottom:11px}
+  /* Contador */
+  .counter-box{border:2px solid #0a6ed1;background:#f0f7ff;border-radius:14px;padding:14px;margin-bottom:14px}
+  .counter{display:flex;align-items:center;justify-content:space-between;gap:12px}
+  .counter button{width:74px;height:74px;border-radius:18px;border:none;font-size:38px;font-weight:700;cursor:pointer;color:#fff;box-shadow:0 2px 8px rgba(0,0,0,.2);flex-shrink:0}
+  .counter button:active{transform:scale(.94)}
+  .counter .minus{background:#c0392b}.counter .plus{background:#0a6ed1}
+  .counter .val{font-size:60px;font-weight:800;flex:1;text-align:center;color:#23303d;line-height:1}
+  .hdr-mini{background:#354a5f;color:#fff;border-radius:10px;padding:10px 14px;margin-bottom:12px}
+  .arbol-row{display:flex;align-items:center;justify-content:space-between;padding:9px 11px;border-bottom:1px solid #eee;font-size:15px}
+  .gps-dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px}
+  table.rep{width:100%;border-collapse:collapse;font-size:13px}
+  table.rep th{background:#354a5f;color:#fff;padding:8px;text-align:left;font-size:12px}
+  table.rep td{padding:7px 8px;border-bottom:1px solid #eee}
+  .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#23303d;color:#fff;padding:12px 20px;border-radius:10px;font-size:14px;z-index:9999;box-shadow:0 4px 16px rgba(0,0,0,.3);max-width:90%;text-align:center}
+  .pill{padding:2px 9px;border-radius:10px;font-size:11px;font-weight:700}
+  .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;display:flex;align-items:center;justify-content:center;padding:18px}
+  .modal-card{background:#fff;border-radius:14px;max-width:420px;width:100%;padding:22px;max-height:88vh;overflow-y:auto}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="toast-area"></div>
+
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+
+<script>
+/* ═══════════════════════════════════════════════════════════════════
+   CONTEO DE CENTROS FLORALES — App independiente (solo Firebase)
+   Sin conexión con otros módulos. Datos en colección 'conteos_centros'.
+   ═══════════════════════════════════════════════════════════════════ */
+
+// ───── USUARIOS INICIALES (semilla; luego se administran en Firebase) ─────
+// Roles: 'admin' (todo), 'supervisor' (ve todo, no configura), 'contador' (solo cuenta)
+// Estos son los usuarios base. El admin puede crear/editar más en Configuración.
+var USUARIOS_SEED = {
+  'admin':     { clave:'admincabana', rol:'admin',     nombre:'Administrador' },
+  'contador1': { clave:'cabana2026',  rol:'contador',  nombre:'Contador 1' },
+  'contador2': { clave:'cabana2026',  rol:'contador',  nombre:'Contador 2' }
+};
+var ROLES = {
+  'admin':      'Administrador',
+  'supervisor': 'Supervisor',
+  'contador':   'Contador'
+};
+
+// ───── FIREBASE (misma cuenta, colección aparte) ─────
+var FB_CONFIG = {
+  apiKey: "AIzaSyCl2CDK9tzMZQ5iJmDlYqAxZeV_Pw_rgqE",
+  authDomain: "cuaderno-de-campo-d2922.firebaseapp.com",
+  projectId: "cuaderno-de-campo-d2922",
+  storageBucket: "cuaderno-de-campo-d2922.firebasestorage.app",
+  messagingSenderId: "112356988045",
+  appId: "1:112356988045:web:432a76e2fe6826b4abfec4"
+};
+var COLECCION = 'conteos_centros';   // colección independiente
+var COLECCION_ESTIM = 'estimaciones_centros';  // estimaciones (versiones guardadas)
+var COLECCION_USERS = 'usuarios_conteo';  // usuarios de la app (editables, sincronizados)
+var db = null, fbOk = false;
+
+function initFirebase(){
+  try{
+    firebase.initializeApp(FB_CONFIG);
+    db = firebase.firestore();
+    fbOk = true;
+    console.log('[Firebase] Conectado a', COLECCION);
+  }catch(e){ console.warn('[Firebase] No disponible:', e); fbOk=false; }
+}
+
+// ───── PAÑOS PRECARGADOS (editables) ─────
+// Cada paño tiene 3 árboles fijos representativos (códigos persistentes) que se
+// cuentan cada año, más 5 árboles aleatorios que cambian en cada conteo.
+var PANOS_DEFAULT = [
+  { id:'p1', nombre:'Cuartel 1', variedad:'Regina', plantas:0, fijos:['F1','F2','F3'] },
+  { id:'p2', nombre:'Cuartel 2', variedad:'Skeena', plantas:0, fijos:['F1','F2','F3'] },
+  { id:'p3', nombre:'Cuartel 3', variedad:'Lapins', plantas:0, fijos:['F1','F2','F3'] },
+  { id:'p4', nombre:'Cuartel 4', variedad:'Kordia', plantas:0, fijos:['F1','F2','F3'] }
+];
+var VARIEDADES = ['Regina','Skeena','Lapins','Kordia','Bing','Santina','Sweetheart','Rainier'];
+// Etapas fenológicas del cerezo (para identificar cada campaña de conteo)
+var ETAPAS = ['Yema hinchada','Yema algodonosa','Botón blanco','Plena flor','Caída de pétalos','Cuaja','Post-cuaja','Fruto en crecimiento'];
+var N_FIJOS = 3;       // árboles fijos representativos por paño
+var N_ALEATORIOS = 5;  // árboles al azar por conteo (esta temporada)
+
+// ───── ESTADO ─────
+var APP = {
+  user: null,          // { id, nombre, rol }
+  vista: 'inicio',     // inicio | sesion | lista | panos | estim | estimVer | config
+  panos: [],
+  sesion: null,
+  conteos: [],         // registros guardados (local + nube)
+  estimaciones: [],    // versiones de estimación guardadas
+  estimActual: null,   // estimación en edición
+  usuarios: {},        // usuarios editables (de Firebase + semilla)
+  valActual: 0,
+  tipoArbol: null,     // 'fijo' | 'aleatorio' en la sesión activa
+  varFiltro: ''
+};
+
+// Helpers de permisos
+function esAdmin(){ return APP.user && APP.user.rol==='admin'; }
+function esSupervisor(){ return APP.user && (APP.user.rol==='admin'||APP.user.rol==='supervisor'); }
+
+// ───── UTILIDADES ─────
+function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+function toast(msg){
+  var t=document.createElement('div'); t.className='toast'; t.textContent=msg;
+  document.getElementById('toast-area').appendChild(t);
+  setTimeout(function(){ t.style.opacity='0'; t.style.transition='.3s'; setTimeout(function(){t.remove();},300); }, 2600);
+}
+function lsGet(k,def){ try{ var v=localStorage.getItem(k); return v?JSON.parse(v):def; }catch(e){ return def; } }
+function lsSet(k,v){ try{ localStorage.setItem(k,JSON.stringify(v)); }catch(e){} }
+
+// ───── INICIO / LOGIN ─────
+function init(){
+  initFirebase();
+  APP.panos = lsGet('cc_panos', null) || PANOS_DEFAULT.slice();
+  APP.conteos = lsGet('cc_conteos', []);
+  APP.estimaciones = lsGet('cc_estimaciones', []);
+  // Usuarios: combinar semilla + los guardados localmente (respaldo offline)
+  APP.usuarios = lsGet('cc_usuarios', null) || JSON.parse(JSON.stringify(USUARIOS_SEED));
+  cargarUsuariosNube();  // refresca desde Firebase si hay conexión
+  var savedUser = lsGet('cc_user', null);
+  if(savedUser){ APP.user = savedUser; render(); cargarDesdeNube(); cargarEstimNube(); }
+  else { renderLogin(); }
+}
+
+function renderLogin(){
+  document.getElementById('app').innerHTML =
+    '<div class="login-box">'+
+      '<h1>🌸 Conteo de Centros Florales</h1>'+
+      '<div class="sub">Sociedad Agrícola y Forestal La Cabaña</div>'+
+      '<div class="field"><label>Usuario</label><input type="text" id="lg-user" autocapitalize="none" placeholder="usuario"></div>'+
+      '<div class="field"><label>Clave</label><input type="password" id="lg-pass" placeholder="clave"></div>'+
+      '<button class="btn btn-primary" onclick="doLogin()">Ingresar</button>'+
+    '</div>';
+}
+function doLogin(){
+  var u=(document.getElementById('lg-user').value||'').trim().toLowerCase();
+  var p=(document.getElementById('lg-pass').value||'').trim();
+  var info = APP.usuarios[u];
+  if(info && info.clave===p){
+    APP.user = { id:u, nombre:info.nombre||u, rol:info.rol||'contador' };
+    lsSet('cc_user', APP.user);
+    render();
+    cargarDesdeNube();
+    cargarEstimNube();
+    toast('Bienvenido, '+(info.nombre||u));
+  } else {
+    toast('Usuario o clave incorrectos');
+  }
+}
+function logout(){
+  localStorage.removeItem('cc_user');
+  APP.user=null; APP.vista='inicio';
+  renderLogin();
+}
+
+// ───── RENDER PRINCIPAL ─────
+function render(){
+  if(!APP.user){ renderLogin(); return; }
+  var online = navigator.onLine && fbOk;
+  var pend = APP.conteos.filter(function(x){return !x.sincronizado;}).length;
+  var top = '<div class="topbar">'+
+      '<div><div class="t-title">🌸 Conteo Centros</div><div class="t-sub">'+esc(APP.user.nombre)+' · '+esc(ROLES[APP.user.rol]||APP.user.rol)+'</div></div>'+
+      '<button class="btn btn-sm" style="background:rgba(255,255,255,.2);color:#fff;margin-bottom:0" onclick="logout()">Salir</button>'+
+    '</div>';
+  var sync = '<div class="sync-bar" style="background:'+(online?'#d1f0d8':'#fde8c8')+';color:'+(online?'#0a6e2e':'#7a4200')+'">'+
+      (online?'🟢 Conectado':'🔴 Sin conexión')+(pend>0?(' · '+pend+' por subir'):' · todo sincronizado')+
+    '</div>';
+  var body='';
+  if(APP.vista==='sesion' && APP.sesion){ body=renderSesion(); }
+  else if(APP.vista==='lista'){ body=renderLista(); }
+  else if(APP.vista==='panos'){ body=renderPanos(); }
+  else if(APP.vista==='estim'){ body=renderEstim(); }
+  else if(APP.vista==='estimVer' && APP.estimActual){ body=renderEstimVer(); }
+  else if(APP.vista==='config'){ body=renderConfig(); }
+  else { body=renderInicio(); }
+  document.getElementById('app').innerHTML = top + '<div class="wrap">'+sync+body+'</div>';
+}
+
+function variedades(){ return [...new Set(APP.panos.map(function(p){return p.variedad;}).filter(Boolean))].sort(); }
+
+function renderInicio(){
+  var vars = variedades();
+  var pend = APP.conteos.filter(function(x){return !x.sincronizado;}).length;
+  return '<div class="card">'+
+      '<div style="font-size:19px;font-weight:800;color:#23303d;margin-bottom:4px">Nuevo conteo</div>'+
+      '<div style="font-size:13px;color:#777;margin-bottom:15px">Seleccione el paño y cuente los centros florales por árbol.</div>'+
+      '<div class="field"><label>Variedad</label><select id="cte-var" onchange="setVarFiltro(this.value)">'+
+        '<option value="">— Todas —</option>'+vars.map(function(v){return '<option '+(APP.varFiltro===v?'selected':'')+'>'+esc(v)+'</option>';}).join('')+
+      '</select></div>'+
+      '<div class="field"><label>Paño</label><select id="cte-pano">'+
+        '<option value="">— Seleccione paño —</option>'+
+        APP.panos.filter(function(p){return !APP.varFiltro||p.variedad===APP.varFiltro;}).map(function(p){
+          return '<option value="'+esc(p.id)+'">'+esc(p.nombre)+' ('+esc(p.variedad)+')</option>';
+        }).join('')+
+      '</select></div>'+
+      '<div class="field"><label>Etapa fenológica</label><select id="cte-etapa">'+
+        ETAPAS.map(function(e){return '<option value="'+esc(e)+'">'+esc(e)+'</option>';}).join('')+
+      '</select></div>'+
+      '<div style="font-size:12px;color:#888;margin-bottom:10px">Se cuentan '+N_FIJOS+' árboles fijos (representativos) + '+N_ALEATORIOS+' al azar = '+(N_FIJOS+N_ALEATORIOS)+' árboles.</div>'+
+      '<button class="btn btn-green" onclick="iniciarSesion()">▶️ Iniciar conteo</button>'+
+    '</div>'+
+    '<button class="btn btn-gray" onclick="verLista()">📋 Registros guardados'+(pend>0?(' ('+pend+' por subir)'):'')+'</button>'+
+    // Estimación: admin y supervisor
+    (esSupervisor()?'<button class="btn btn-gray" onclick="verEstim()">📈 Estimación de producción</button>':'')+
+    (navigator.onLine&&fbOk?'<button class="btn btn-primary" onclick="sincronizar()">☁️ Subir a la nube</button>':'')+
+    // Editar paños y Configuración: solo admin
+    (esAdmin()?'<button class="btn btn-gray" onclick="verPanos()">⚙️ Editar paños</button>':'')+
+    (esAdmin()?'<button class="btn btn-gray" onclick="verConfig()">👥 Configuración y usuarios</button>':'');
+}
+function setVarFiltro(v){ APP.varFiltro=v; render(); }
+
+// ───── SESIÓN DE CONTEO ─────
+function iniciarSesion(){
+  var sel=document.getElementById('cte-pano'); var id=sel?sel.value:'';
+  if(!id){ toast('Seleccione un paño'); return; }
+  var etapa=document.getElementById('cte-etapa').value||'';
+  var pano=APP.panos.find(function(p){return String(p.id)===String(id);});
+  if(!pano) return;
+  var fijos = (pano.fijos && pano.fijos.length) ? pano.fijos.slice() : ['F1','F2','F3'];
+  APP.sesion = { id:uid(), panoId:pano.id, panoNombre:pano.nombre, variedad:pano.variedad,
+    etapa:etapa, fijosCodigos:fijos,
+    fechaInicio:new Date().toISOString(), usuario:APP.user.nombre, usuarioId:APP.user.id,
+    arboles:[], sincronizado:false };
+  APP.valActual=0; APP.tipoArbol='fijo'; APP.vista='sesion'; render();
+}
+function renderSesion(){
+  var s=APP.sesion;
+  var n=s.arboles.length;
+  var nFijos=s.arboles.filter(function(a){return a.tipo==='fijo';}).length;
+  var nAzar=s.arboles.filter(function(a){return a.tipo==='aleatorio';}).length;
+  var sum=s.arboles.reduce(function(a,x){return a+(x.centros||0);},0);
+  var prom=n?(sum/n):0;
+  // Determinar el siguiente árbol sugerido: completar fijos primero, luego aleatorios
+  var sugerido, sugCodigo, sugColor;
+  if(nFijos < N_FIJOS){ sugerido='fijo'; sugCodigo=(s.fijosCodigos&&s.fijosCodigos[nFijos])||('F'+(nFijos+1)); sugColor='#0a6ed1'; }
+  else if(nAzar < N_ALEATORIOS){ sugerido='aleatorio'; sugCodigo='Azar '+(nAzar+1); sugColor='#e9730c'; }
+  else { sugerido='extra'; sugCodigo='Extra'; sugColor='#6a7889'; }
+  // Tipo activo seleccionado (por defecto el sugerido)
+  var tipoActivo = APP.tipoArbol || sugerido;
+
+  return '<div class="hdr-mini">'+
+      '<div style="font-size:17px;font-weight:800">'+esc(s.panoNombre)+'</div>'+
+      '<div style="font-size:12px;opacity:.85">'+esc(s.variedad)+' · '+esc(s.etapa||'')+'</div>'+
+      '<div style="font-size:11px;opacity:.75;margin-top:3px">Fijos: '+nFijos+'/'+N_FIJOS+' · Al azar: '+nAzar+'/'+N_ALEATORIOS+' · Total: '+n+'</div>'+
+    '</div>'+
+    // Selector de tipo de árbol
+    '<div style="display:flex;gap:8px;margin-bottom:10px">'+
+      '<button onclick="setTipoArbol(\'fijo\')" style="flex:1;padding:11px;border-radius:10px;border:2px solid '+(tipoActivo==='fijo'?'#0a6ed1':'#d9d9d9')+';background:'+(tipoActivo==='fijo'?'#f0f7ff':'#fff')+';font-weight:700;font-size:13px;cursor:pointer;color:#0a6ed1">📍 Fijo ('+nFijos+'/'+N_FIJOS+')</button>'+
+      '<button onclick="setTipoArbol(\'aleatorio\')" style="flex:1;padding:11px;border-radius:10px;border:2px solid '+(tipoActivo==='aleatorio'?'#e9730c':'#d9d9d9')+';background:'+(tipoActivo==='aleatorio'?'#fff7ef':'#fff')+';font-weight:700;font-size:13px;cursor:pointer;color:#e9730c">🎲 Al azar ('+nAzar+'/'+N_ALEATORIOS+')</button>'+
+    '</div>'+
+    '<div class="counter-box" style="border-color:'+(tipoActivo==='fijo'?'#0a6ed1':'#e9730c')+';background:'+(tipoActivo==='fijo'?'#f0f7ff':'#fff7ef')+'">'+
+      '<div style="text-align:center;font-weight:800;color:'+(tipoActivo==='fijo'?'#0a6ed1':'#e9730c')+';margin-bottom:4px">'+(tipoActivo==='fijo'?'📍 Árbol fijo '+((s.fijosCodigos&&s.fijosCodigos[nFijos])||('F'+(nFijos+1))):'🎲 Árbol al azar '+(nAzar+1))+'</div>'+
+      '<div style="text-align:center;font-size:12px;color:#888;margin-bottom:6px">Centros florales</div>'+
+      '<div class="counter">'+
+        '<button class="minus" onclick="ajustar(-1)">−</button>'+
+        '<div class="val" id="cte-val">'+APP.valActual+'</div>'+
+        '<button class="plus" style="background:'+(tipoActivo==='fijo'?'#0a6ed1':'#e9730c')+'" onclick="ajustar(1)">+</button>'+
+      '</div>'+
+      '<input type="number" inputmode="numeric" id="cte-input" value="'+APP.valActual+'" onchange="setVal(this.value)" style="width:100%;padding:11px;font-size:17px;text-align:center;border:2px solid #d9d9d9;border-radius:10px;margin-top:12px">'+
+    '</div>'+
+    '<button class="btn btn-green" onclick="guardarArbol()">✓ Guardar árbol y siguiente</button>'+
+    (n>0?'<div class="card"><div style="font-weight:700;color:#354a5f;margin-bottom:6px">Árboles contados ('+n+')</div>'+
+      s.arboles.map(function(a,i){
+        var badge = a.tipo==='fijo' ? '<span class="pill" style="background:#e7f0fb;color:#0854a0">📍 '+esc(a.codigo||'Fijo')+'</span>' : '<span class="pill" style="background:#fbe9d6;color:#9a5000">🎲 '+esc(a.codigo||'Azar')+'</span>';
+        return '<div class="arbol-row"><span>'+badge+'</span><span style="font-weight:700">'+a.centros+(a.lat?' 📍':'')+'</span><button onclick="quitarArbol('+i+')" style="background:none;border:none;color:#c0392b;font-size:17px;cursor:pointer">✕</button></div>';
+      }).join('')+
+    '</div>':'')+
+    '<button class="btn btn-primary" onclick="finalizarSesion()">🏁 Finalizar y guardar</button>'+
+    '<button class="btn btn-gray" onclick="cancelarSesion()">Cancelar</button>';
+}
+function setTipoArbol(t){ APP.tipoArbol=t; render(); }
+function ajustar(d){ APP.valActual=Math.max(0,APP.valActual+d); var v=document.getElementById('cte-val'); if(v)v.textContent=APP.valActual; var i=document.getElementById('cte-input'); if(i)i.value=APP.valActual; }
+function setVal(v){ APP.valActual=Math.max(0,parseInt(v)||0); var e=document.getElementById('cte-val'); if(e)e.textContent=APP.valActual; }
+function guardarArbol(){
+  if(APP.valActual<=0){ toast('Ingrese los centros del árbol'); return; }
+  var s=APP.sesion;
+  var nFijos=s.arboles.filter(function(a){return a.tipo==='fijo';}).length;
+  var nAzar=s.arboles.filter(function(a){return a.tipo==='aleatorio';}).length;
+  // Tipo elegido (o sugerido)
+  var tipo = APP.tipoArbol;
+  if(!tipo){ tipo = nFijos<N_FIJOS ? 'fijo' : 'aleatorio'; }
+  // Código según tipo
+  var codigo;
+  if(tipo==='fijo'){ codigo=(s.fijosCodigos&&s.fijosCodigos[nFijos])||('F'+(nFijos+1)); }
+  else { codigo='A'+(nAzar+1); }
+  var n=s.arboles.length+1;
+  var reg={n:n,tipo:tipo,codigo:codigo,centros:APP.valActual,lat:null,lng:null,fecha:new Date().toISOString()};
+  var seguro=(window.isSecureContext===true)||location.protocol==='https:';
+  if(navigator.geolocation && seguro){
+    toast('Capturando GPS...');
+    navigator.geolocation.getCurrentPosition(function(pos){
+      reg.lat=pos.coords.latitude; reg.lng=pos.coords.longitude; finArbol(reg);
+    }, function(){ finArbol(reg); }, {timeout:12000,enableHighAccuracy:true,maximumAge:0});
+  } else { finArbol(reg); }
+}
+function finArbol(reg){
+  APP.sesion.arboles.push(reg); APP.valActual=0; APP.tipoArbol=null; render();
+  toast(reg.codigo+': '+reg.centros+' centros'+(reg.lat?' · GPS ✓':''));
+}
+function quitarArbol(i){ APP.sesion.arboles.splice(i,1); APP.sesion.arboles.forEach(function(a,idx){a.n=idx+1;}); render(); }
+function cancelarSesion(){ if(confirm('¿Descartar el conteo en curso?')){ APP.sesion=null; APP.tipoArbol=null; APP.vista='inicio'; render(); } }
+
+function finalizarSesion(){
+  var s=APP.sesion;
+  if(!s.arboles.length){ toast('Cuente al menos un árbol'); return; }
+  s.fechaFin=new Date().toISOString();
+  var sum=s.arboles.reduce(function(a,x){return a+(x.centros||0);},0);
+  s.promedioCentros=sum/s.arboles.length;
+  // Promedios separados por tipo (útil para análisis)
+  var fijos=s.arboles.filter(function(a){return a.tipo==='fijo';});
+  var azar=s.arboles.filter(function(a){return a.tipo==='aleatorio';});
+  s.promFijos = fijos.length ? fijos.reduce(function(a,x){return a+x.centros;},0)/fijos.length : null;
+  s.promAleatorios = azar.length ? azar.reduce(function(a,x){return a+x.centros;},0)/azar.length : null;
+  s.nFijos=fijos.length; s.nAleatorios=azar.length;
+  s.nArboles=s.arboles.length;
+  s.sincronizado=false;
+  APP.conteos.push(s);
+  lsSet('cc_conteos', APP.conteos);
+  var online=navigator.onLine&&fbOk;
+  if(online){ subirUno(s); }
+  APP.sesion=null; APP.vista='inicio'; render();
+  toast('Sesión guardada'+(online?' y subida':' (en el teléfono)'));
+}
+
+// ───── FIREBASE: subir/bajar ─────
+function subirUno(s){
+  if(!fbOk||!navigator.onLine) return;
+  db.collection(COLECCION).doc(s.id).set(s).then(function(){
+    s.sincronizado=true; s.fechaSync=new Date().toISOString();
+    lsSet('cc_conteos', APP.conteos);
+    if(APP.vista==='lista'||APP.vista==='inicio') render();
+  }).catch(function(e){ console.warn('Error subiendo:',e); });
+}
+function sincronizar(){
+  if(!navigator.onLine||!fbOk){ toast('Sin conexión'); return; }
+  var pend=APP.conteos.filter(function(x){return !x.sincronizado;});
+  if(!pend.length){ toast('Todo al día'); return; }
+  var n=0;
+  pend.forEach(function(s){
+    db.collection(COLECCION).doc(s.id).set(s).then(function(){
+      s.sincronizado=true; s.fechaSync=new Date().toISOString(); n++;
+      lsSet('cc_conteos', APP.conteos);
+      render();
+    }).catch(function(e){ console.warn(e); });
+  });
+  toast('Subiendo '+pend.length+' registro(s)...');
+}
+function cargarDesdeNube(){
+  if(!fbOk||!navigator.onLine) return;
+  db.collection(COLECCION).get().then(function(snap){
+    var remotos={};
+    snap.forEach(function(doc){ remotos[doc.id]=doc.data(); });
+    // Combinar: agregar los remotos que no estén local
+    var ids=APP.conteos.map(function(x){return x.id;});
+    Object.keys(remotos).forEach(function(id){
+      if(ids.indexOf(id)<0){ remotos[id].sincronizado=true; APP.conteos.push(remotos[id]); }
+    });
+    lsSet('cc_conteos', APP.conteos);
+    if(APP.vista==='lista'||APP.vista==='inicio') render();
+  }).catch(function(e){ console.warn('Error cargando nube:',e); });
+}
+
+
+// ───── LISTA / REPORTES ─────
+function verLista(){ APP.vista='lista'; render(); }
+function verPanos(){ if(!esAdmin()){ toast('Solo administradores'); return; } APP.vista='panos'; render(); }
+function verConfig(){ if(!esAdmin()){ toast('Solo administradores'); return; } APP.vista='config'; render(); }
+function volver(){ APP.vista='inicio'; render(); }
+
+function renderLista(){
+  var ses=APP.conteos.slice().sort(function(a,b){return (b.fechaInicio||'').localeCompare(a.fechaInicio||'');});
+  var html='<button class="btn btn-gray" onclick="volver()">‹ Volver</button>';
+  if(ses.length){ html+='<button class="btn btn-amber" onclick="exportarExcel()">📊 Exportar a Excel</button>'; }
+  if(!ses.length){ return html+'<div class="card" style="text-align:center;color:#999;padding:28px">Sin registros todavía.</div>'; }
+  html+=ses.map(function(s){
+    var fecha=(s.fechaInicio||'').slice(0,10), hora=(s.fechaInicio||'').slice(11,16);
+    var sync=s.sincronizado?'<span class="pill" style="background:#d1f0d8;color:#0a6e2e">☁️ Subido</span>':'<span class="pill" style="background:#fbe5cc;color:#7a4200">📱 Local</span>';
+    var arbolGps=(s.arboles||[]).find(function(a){return a.lat!=null&&a.lng!=null;});
+    var nGps=(s.arboles||[]).filter(function(a){return a.lat!=null;}).length;
+    var gps='';
+    if(arbolGps){
+      gps='<div style="margin-top:10px;padding:9px;background:#f0f7ff;border-radius:8px;display:flex;justify-content:space-between;align-items:center;gap:8px">'+
+        '<div style="font-size:12px;color:#666">📍 '+arbolGps.lat.toFixed(6)+', '+arbolGps.lng.toFixed(6)+(nGps>1?(' <span style="color:#888">('+nGps+' pts)</span>'):'')+'</div>'+
+        '<button class="btn-sm btn-primary" style="border:none" onclick="abrirMapa('+arbolGps.lat+','+arbolGps.lng+')">🗺️ Mapa</button></div>';
+    } else { gps='<div style="margin-top:8px;font-size:12px;color:#aaa">📍 Sin GPS</div>'; }
+    return '<div class="card">'+
+      '<div style="display:flex;justify-content:space-between;align-items:start">'+
+        '<div><div style="font-size:17px;font-weight:800;color:#23303d">'+esc(s.panoNombre)+'</div>'+
+          '<div style="font-size:12px;color:#666">'+esc(s.variedad)+' · '+fecha+' '+hora+' · '+esc(s.usuario||'')+'</div>'+
+          (s.etapa?'<div style="font-size:11px;margin-top:3px"><span class="pill" style="background:#e7f0fb;color:#0854a0">🌱 '+esc(s.etapa)+'</span></div>':'')+'</div>'+
+        '<div>'+sync+'</div></div>'+
+      '<div style="display:flex;gap:14px;margin-top:9px;font-size:14px;flex-wrap:wrap">'+
+        '<div><span style="color:#888">Árboles:</span> <strong>'+(s.nArboles||s.arboles.length)+'</strong></div>'+
+        '<div><span style="color:#888">Prom:</span> <strong style="color:#0a6ed1">'+(s.promedioCentros!=null?s.promedioCentros.toFixed(1):'-')+'</strong></div>'+
+        (s.promFijos!=null?'<div><span style="color:#888">📍 Fijos:</span> <strong style="color:#0854a0">'+s.promFijos.toFixed(1)+'</strong></div>':'')+
+        (s.promAleatorios!=null?'<div><span style="color:#888">🎲 Azar:</span> <strong style="color:#e9730c">'+s.promAleatorios.toFixed(1)+'</strong></div>':'')+
+      '</div>'+gps+
+      '<button class="btn btn-red" style="margin-top:10px;padding:9px" onclick="eliminarSesion(\''+s.id+'\')">🗑️ Eliminar</button>'+
+    '</div>';
+  }).join('');
+  return html;
+}
+function abrirMapa(lat,lng){ window.open('https://www.google.com/maps/search/?api=1&query='+lat+','+lng,'_blank'); }
+function eliminarSesion(id){
+  if(!confirm('¿Eliminar este registro?')) return;
+  var s=APP.conteos.find(function(x){return x.id===id;});
+  APP.conteos=APP.conteos.filter(function(x){return x.id!==id;});
+  lsSet('cc_conteos',APP.conteos);
+  if(fbOk&&navigator.onLine){ db.collection(COLECCION).doc(id).delete().catch(function(){}); }
+  render(); toast('Registro eliminado');
+}
+
+// ───── EXPORTAR EXCEL (CSV simple, sin librerías) ─────
+function exportarExcel(){
+  var rows=[['Paño','Variedad','Etapa fenológica','Fecha','Usuario','Tipo árbol','Código árbol','Centros','Latitud','Longitud','Prom sesión','Prom fijos','Prom azar']];
+  APP.conteos.forEach(function(s){
+    (s.arboles||[]).forEach(function(a){
+      rows.push([s.panoNombre,s.variedad,s.etapa||'',(a.fecha||'').slice(0,10),s.usuario||'',
+        a.tipo==='fijo'?'Fijo':(a.tipo==='aleatorio'?'Al azar':''),a.codigo||'',a.centros,
+        a.lat!=null?a.lat:'',a.lng!=null?a.lng:'',
+        s.promedioCentros!=null?s.promedioCentros.toFixed(2):'',
+        s.promFijos!=null?s.promFijos.toFixed(2):'',
+        s.promAleatorios!=null?s.promAleatorios.toFixed(2):'']);
+    });
+  });
+  var csv=rows.map(function(r){return r.map(function(c){var s=String(c==null?'':c);return /[",;\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;}).join(';');}).join('\n');
+  var blob=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8;'});
+  var url=URL.createObjectURL(blob);
+  var a=document.createElement('a'); a.href=url; a.download='Conteos_Centros_'+new Date().toISOString().slice(0,10)+'.csv';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  toast('Archivo CSV descargado (se abre en Excel)');
+}
+
+// ───── EDITAR PAÑOS ─────
+function renderPanos(){
+  var html='<button class="btn btn-gray" onclick="volver()">‹ Volver</button>'+
+    '<div class="card"><div style="font-weight:800;color:#23303d;margin-bottom:8px">Agregar paño</div>'+
+      '<div class="field"><label>Nombre / Cuartel</label><input type="text" id="pn-nombre" placeholder="Ej: Cuartel 5"></div>'+
+      '<div class="field"><label>Variedad</label><input type="text" id="pn-var" list="pn-var-dl" placeholder="Ej: Regina"><datalist id="pn-var-dl">'+VARIEDADES.map(function(v){return '<option value="'+esc(v)+'">';}).join('')+'</datalist></div>'+
+      '<div class="field"><label>N° de plantas</label><input type="number" id="pn-plantas" inputmode="numeric" min="0" placeholder="Ej: 1250"></div>'+
+      '<div class="field"><label>Códigos de los 3 árboles fijos (separados por coma)</label><input type="text" id="pn-fijos" placeholder="Ej: F1, F2, F3"></div>'+
+      '<button class="btn btn-green" onclick="agregarPano()">+ Agregar</button>'+
+    '</div>'+
+    '<div class="card"><div style="font-weight:800;color:#23303d;margin-bottom:8px">Paños ('+APP.panos.length+')</div>'+
+      APP.panos.map(function(p){
+        var fijos=(p.fijos&&p.fijos.length)?p.fijos.join(', '):'F1, F2, F3';
+        return '<div style="padding:9px 0;border-bottom:1px solid #eee">'+
+          '<div style="display:flex;justify-content:space-between;align-items:center">'+
+            '<div><strong>'+esc(p.nombre)+'</strong> · '+esc(p.variedad)+' · '+(p.plantas||0).toLocaleString('es-CL')+' pl</div>'+
+            '<button onclick="eliminarPano(\''+p.id+'\')" style="background:none;border:none;color:#c0392b;font-size:16px;cursor:pointer">✕</button>'+
+          '</div>'+
+          '<div style="font-size:12px;color:#888;margin-top:3px">📍 Árboles fijos: '+esc(fijos)+' <button onclick="editarFijos(\''+p.id+'\')" style="background:none;border:none;color:#0a6ed1;font-size:12px;cursor:pointer;font-weight:700">editar</button></div>'+
+        '</div>';
+      }).join('')+
+    '</div>';
+  return html;
+}
+function agregarPano(){
+  var nombre=(document.getElementById('pn-nombre').value||'').trim();
+  var variedad=(document.getElementById('pn-var').value||'').trim();
+  var plantas=parseInt(document.getElementById('pn-plantas').value)||0;
+  var fijosTxt=(document.getElementById('pn-fijos').value||'').trim();
+  var fijos = fijosTxt ? fijosTxt.split(',').map(function(x){return x.trim();}).filter(Boolean) : ['F1','F2','F3'];
+  if(!nombre||!variedad){ toast('Complete nombre y variedad'); return; }
+  APP.panos.push({id:uid(),nombre:nombre,variedad:variedad,plantas:plantas,fijos:fijos});
+  lsSet('cc_panos',APP.panos); render(); toast('Paño agregado');
+}
+function editarFijos(id){
+  var p=APP.panos.find(function(x){return x.id===id;});
+  if(!p) return;
+  var actual=(p.fijos&&p.fijos.length)?p.fijos.join(', '):'F1, F2, F3';
+  var nuevo=prompt('Códigos de los 3 árboles fijos representativos (separados por coma):', actual);
+  if(nuevo==null) return;
+  p.fijos = nuevo.split(',').map(function(x){return x.trim();}).filter(Boolean);
+  lsSet('cc_panos',APP.panos); render(); toast('Árboles fijos actualizados');
+}
+function eliminarPano(id){
+  if(!confirm('¿Eliminar este paño?')) return;
+  APP.panos=APP.panos.filter(function(p){return p.id!==id;});
+  lsSet('cc_panos',APP.panos); render();
+}
+
+
+// ═══════════ MÓDULO ESTIMACIÓN DE PRODUCCIÓN (autónomo) ═══════════
+// Usa el promedio de centros florales de los conteos registrados.
+// Fórmula: centros × frutos/centro × kg/fruto × N° plantas = kg/paño
+function verEstim(){ if(!esSupervisor()){ toast('Solo supervisores y administradores'); return; } APP.vista='estim'; render(); }
+
+// Promedio de centros florales por paño (de los conteos)
+function promedioCentrosPano(panoId){
+  var conteosPano = APP.conteos.filter(function(c){ return String(c.panoId)===String(panoId) && c.promedioCentros!=null; });
+  if(!conteosPano.length) return null;
+  var sum = conteosPano.reduce(function(a,c){ return a+c.promedioCentros; },0);
+  return sum/conteosPano.length;
+}
+
+function renderEstim(){
+  var ess = APP.estimaciones.slice().sort(function(a,b){ return (b.fecha||'').localeCompare(a.fecha||''); });
+  var html='<button class="btn btn-gray" onclick="volver()">‹ Volver</button>'+
+    '<button class="btn btn-green" onclick="nuevaEstim()">+ Nueva estimación</button>';
+  if(!ess.length){
+    html+='<div class="card" style="text-align:center;color:#999;padding:24px">Sin estimaciones guardadas. Cree una nueva con los conteos registrados.</div>';
+    return html;
+  }
+  html+='<div style="font-weight:800;color:#23303d;margin:8px 0">Versiones guardadas ('+ess.length+')</div>';
+  html+=ess.map(function(e){
+    return '<div class="card">'+
+      '<div style="display:flex;justify-content:space-between;align-items:start">'+
+        '<div><div style="font-size:16px;font-weight:800;color:#23303d">'+esc(e.nombre)+'</div>'+
+          '<div style="font-size:12px;color:#666">'+(e.fecha||'').slice(0,10)+' · '+esc(e.usuario||'')+'</div></div>'+
+        '<div style="text-align:right"><div style="font-size:18px;font-weight:800;color:#0a6ed1">'+(e.totalKg!=null?Math.round(e.totalKg).toLocaleString('es-CL'):'-')+'</div><div style="font-size:11px;color:#888">kg total</div></div>'+
+      '</div>'+
+      '<div style="display:flex;gap:8px;margin-top:10px">'+
+        '<button class="btn-sm btn-primary" style="flex:1;border:none" onclick="verEstimDetalle(\''+e.id+'\')">Ver detalle</button>'+
+        '<button class="btn-sm btn-red" onclick="eliminarEstim(\''+e.id+'\')">🗑️</button>'+
+      '</div>'+
+    '</div>';
+  }).join('');
+  return html;
+}
+
+// Crear nueva estimación: precarga centros desde los conteos
+function nuevaEstim(){
+  var lineas = APP.panos.map(function(p){
+    var centros = promedioCentrosPano(p.id);
+    return {
+      panoId:p.id, panoNombre:p.nombre, variedad:p.variedad,
+      plantas: p.plantas||0,
+      centros: centros!=null ? Number(centros.toFixed(1)) : 0,
+      tieneCont: centros!=null,
+      frutosCentro: 2,      // valores por defecto editables
+      kgFruto: 0.011        // ~11 g por cereza
+    };
+  });
+  APP.estimActual = {
+    id: uid(),
+    nombre: 'Estimación '+new Date().toLocaleDateString('es-CL'),
+    fecha: new Date().toISOString(),
+    usuario: APP.user.nombre,
+    lineas: lineas
+  };
+  APP.vista='estimVer'; render();
+}
+
+function renderEstimVer(){
+  var e=APP.estimActual;
+  var totalKg=0, totalCajas=0;
+  e.lineas.forEach(function(l){
+    l.kgPano = (l.centros||0)*(l.frutosCentro||0)*(l.kgFruto||0)*(l.plantas||0);
+    totalKg += l.kgPano;
+  });
+  totalCajas = totalKg/5;
+
+  var html='<button class="btn btn-gray" onclick="verEstim()">‹ Volver a versiones</button>'+
+    '<div class="card">'+
+      '<div class="field"><label>Nombre de la versión</label><input type="text" id="es-nombre" value="'+esc(e.nombre)+'"></div>'+
+      '<div style="font-size:12px;color:#888">Fórmula: centros florales × frutos/centro × kg/fruto × N° plantas. Los centros vienen del promedio de los conteos; puede ajustar los demás valores.</div>'+
+    '</div>';
+
+  e.lineas.forEach(function(l,i){
+    html+='<div class="card">'+
+      '<div style="font-weight:800;color:#23303d;margin-bottom:2px">'+esc(l.panoNombre)+' <span style="font-size:12px;font-weight:400;color:#888">· '+esc(l.variedad)+'</span></div>'+
+      '<div style="font-size:11px;color:'+(l.tieneCont?'#0a6e2e':'#c0392b')+';margin-bottom:8px">'+(l.tieneCont?'✓ Centros desde conteos':'⚠ Sin conteos: ingrese centros manualmente')+'</div>'+
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:7px">'+
+        '<div><label style="font-size:10px;color:#888;font-weight:700">CENTROS FLORALES</label><input type="number" step="any" value="'+(l.centros||0)+'" onchange="estimSet('+i+',\'centros\',this.value)" style="width:100%;padding:8px;border:1px solid #d9d9d9;border-radius:6px;font-size:14px"></div>'+
+        '<div><label style="font-size:10px;color:#888;font-weight:700">FRUTOS/CENTRO</label><input type="number" step="any" value="'+(l.frutosCentro||0)+'" onchange="estimSet('+i+',\'frutosCentro\',this.value)" style="width:100%;padding:8px;border:1px solid #d9d9d9;border-radius:6px;font-size:14px"></div>'+
+        '<div><label style="font-size:10px;color:#888;font-weight:700">KG/FRUTO</label><input type="number" step="any" value="'+(l.kgFruto||0)+'" onchange="estimSet('+i+',\'kgFruto\',this.value)" style="width:100%;padding:8px;border:1px solid #d9d9d9;border-radius:6px;font-size:14px"></div>'+
+        '<div><label style="font-size:10px;color:#888;font-weight:700">N° PLANTAS</label><input type="number" value="'+(l.plantas||0)+'" onchange="estimSet('+i+',\'plantas\',this.value)" style="width:100%;padding:8px;border:1px solid #d9d9d9;border-radius:6px;font-size:14px"></div>'+
+      '</div>'+
+      '<div style="margin-top:8px;text-align:right;font-size:14px"><span style="color:#888">kg paño:</span> <strong style="color:#0a6ed1;font-size:17px">'+Math.round(l.kgPano).toLocaleString('es-CL')+'</strong></div>'+
+    '</div>';
+  });
+
+  html+='<div class="card" style="background:#354a5f;color:#fff">'+
+      '<div style="display:flex;justify-content:space-between;align-items:center">'+
+        '<div><div style="font-size:13px;opacity:.85">PRODUCCIÓN ESTIMADA TOTAL</div>'+
+          '<div style="font-size:11px;opacity:.7">'+Math.round(totalCajas).toLocaleString('es-CL')+' cajas de 5 kg · '+(totalKg/1000).toFixed(1)+' toneladas</div></div>'+
+        '<div style="font-size:26px;font-weight:800">'+Math.round(totalKg).toLocaleString('es-CL')+'<span style="font-size:14px;font-weight:400"> kg</span></div>'+
+      '</div>'+
+    '</div>'+
+    '<button class="btn btn-green" onclick="guardarEstim()">💾 Guardar versión</button>'+
+    '<button class="btn btn-amber" onclick="exportarEstim()">📊 Exportar a Excel</button>';
+  return html;
+}
+
+function estimSet(i, campo, val){
+  if(!APP.estimActual||!APP.estimActual.lineas[i]) return;
+  APP.estimActual.lineas[i][campo] = parseFloat(val)||0;
+  render();
+}
+
+function guardarEstim(){
+  var e=APP.estimActual;
+  e.nombre = (document.getElementById('es-nombre').value||'').trim() || e.nombre;
+  // Calcular totales finales
+  var totalKg=0;
+  e.lineas.forEach(function(l){ l.kgPano=(l.centros||0)*(l.frutosCentro||0)*(l.kgFruto||0)*(l.plantas||0); totalKg+=l.kgPano; });
+  e.totalKg = totalKg;
+  e.modificado = new Date().toISOString();
+  // Guardar o actualizar
+  var idx = APP.estimaciones.findIndex(function(x){return x.id===e.id;});
+  if(idx>=0){ APP.estimaciones[idx]=e; } else { APP.estimaciones.push(e); }
+  lsSet('cc_estimaciones', APP.estimaciones);
+  // Subir a Firebase
+  if(fbOk&&navigator.onLine){ db.collection(COLECCION_ESTIM).doc(e.id).set(e).catch(function(){}); }
+  APP.vista='estim'; render();
+  toast('Estimación guardada'+(fbOk&&navigator.onLine?' y subida':''));
+}
+
+function verEstimDetalle(id){
+  var e=APP.estimaciones.find(function(x){return x.id===id;});
+  if(!e) return;
+  APP.estimActual = JSON.parse(JSON.stringify(e));
+  APP.vista='estimVer'; render();
+}
+function eliminarEstim(id){
+  if(!confirm('¿Eliminar esta estimación?')) return;
+  APP.estimaciones=APP.estimaciones.filter(function(x){return x.id!==id;});
+  lsSet('cc_estimaciones',APP.estimaciones);
+  if(fbOk&&navigator.onLine){ db.collection(COLECCION_ESTIM).doc(id).delete().catch(function(){}); }
+  render(); toast('Estimación eliminada');
+}
+
+function exportarEstim(){
+  var e=APP.estimActual;
+  var rows=[['Paño','Variedad','Centros florales','Frutos/centro','Kg/fruto','N° plantas','Kg estimados']];
+  var totalKg=0;
+  e.lineas.forEach(function(l){
+    var kg=(l.centros||0)*(l.frutosCentro||0)*(l.kgFruto||0)*(l.plantas||0); totalKg+=kg;
+    rows.push([l.panoNombre,l.variedad,l.centros,l.frutosCentro,l.kgFruto,l.plantas,Math.round(kg)]);
+  });
+  rows.push(['','','','','','TOTAL kg',Math.round(totalKg)]);
+  rows.push(['','','','','','TOTAL cajas 5kg',Math.round(totalKg/5)]);
+  var csv=rows.map(function(r){return r.map(function(c){var s=String(c==null?'':c);return /[",;\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;}).join(';');}).join('\n');
+  var blob=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8;'});
+  var url=URL.createObjectURL(blob);
+  var a=document.createElement('a'); a.href=url; a.download='Estimacion_'+(e.nombre||'').replace(/[^a-z0-9]/gi,'_')+'.csv';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+  toast('Estimación exportada a CSV');
+}
+
+// Cargar estimaciones desde la nube
+function cargarEstimNube(){
+  if(!fbOk||!navigator.onLine) return;
+  db.collection(COLECCION_ESTIM).get().then(function(snap){
+    var ids=APP.estimaciones.map(function(x){return x.id;});
+    snap.forEach(function(doc){
+      if(ids.indexOf(doc.id)<0){ APP.estimaciones.push(doc.data()); }
+    });
+    lsSet('cc_estimaciones',APP.estimaciones);
+  }).catch(function(){});
+}
+
+
+// ═══════════ MÓDULO CONFIGURACIÓN Y USUARIOS (solo admin) ═══════════
+function renderConfig(){
+  if(!esAdmin()){ return '<div class="card">Acceso restringido a administradores.</div>'; }
+  var users = Object.keys(APP.usuarios).sort();
+  var html='<button class="btn btn-gray" onclick="volver()">‹ Volver</button>'+
+    '<div class="card">'+
+      '<div style="font-size:18px;font-weight:800;color:#23303d;margin-bottom:4px">👥 Usuarios</div>'+
+      '<div style="font-size:12px;color:#888;margin-bottom:8px">Cree y administre los usuarios que accederán a la app. Los cambios se sincronizan con la nube.</div>'+
+    '</div>'+
+    // Formulario nuevo usuario
+    '<div class="card">'+
+      '<div style="font-weight:800;color:#23303d;margin-bottom:8px">Agregar / actualizar usuario</div>'+
+      '<div class="field"><label>Usuario (sin espacios)</label><input type="text" id="cf-user" autocapitalize="none" placeholder="ej: contador3"></div>'+
+      '<div class="field"><label>Nombre</label><input type="text" id="cf-nombre" placeholder="ej: Juan Pérez"></div>'+
+      '<div class="field"><label>Clave</label><input type="text" id="cf-clave" placeholder="clave de acceso"></div>'+
+      '<div class="field"><label>Rol</label><select id="cf-rol">'+
+        Object.keys(ROLES).map(function(r){return '<option value="'+r+'">'+esc(ROLES[r])+'</option>';}).join('')+
+      '</select></div>'+
+      '<button class="btn btn-green" onclick="guardarUsuario()">💾 Guardar usuario</button>'+
+    '</div>'+
+    // Lista de usuarios
+    '<div class="card">'+
+      '<div style="font-weight:800;color:#23303d;margin-bottom:8px">Usuarios registrados ('+users.length+')</div>'+
+      users.map(function(u){
+        var info=APP.usuarios[u];
+        var rolColor = info.rol==='admin'?'#0a6ed1':(info.rol==='supervisor'?'#e9730c':'#6a7889');
+        return '<div style="padding:10px;border-bottom:1px solid #eee">'+
+          '<div style="display:flex;justify-content:space-between;align-items:center">'+
+            '<div><div style="font-weight:700">'+esc(info.nombre||u)+' <span style="font-size:11px;color:#999">('+esc(u)+')</span></div>'+
+              '<div style="font-size:12px"><span class="pill" style="background:'+rolColor+';color:#fff">'+esc(ROLES[info.rol]||info.rol)+'</span> <span style="color:#aaa;font-size:11px">clave: '+esc(info.clave)+'</span></div></div>'+
+            '<div style="display:flex;gap:6px">'+
+              '<button class="btn-sm btn-gray" onclick="editarUsuario(\''+esc(u)+'\')">✏️</button>'+
+              (u!==APP.user.id?'<button class="btn-sm btn-red" onclick="eliminarUsuario(\''+esc(u)+'\')">🗑️</button>':'')+
+            '</div>'+
+          '</div>'+
+        '</div>';
+      }).join('')+
+    '</div>';
+  return html;
+}
+
+function guardarUsuario(){
+  var u=(document.getElementById('cf-user').value||'').trim().toLowerCase().replace(/\s+/g,'');
+  var nombre=(document.getElementById('cf-nombre').value||'').trim();
+  var clave=(document.getElementById('cf-clave').value||'').trim();
+  var rol=document.getElementById('cf-rol').value;
+  if(!u||!clave){ toast('Complete usuario y clave'); return; }
+  APP.usuarios[u]={ clave:clave, nombre:nombre||u, rol:rol };
+  lsSet('cc_usuarios', APP.usuarios);
+  // Subir a Firebase
+  if(fbOk&&navigator.onLine){ db.collection(COLECCION_USERS).doc(u).set(APP.usuarios[u]).catch(function(){}); }
+  render(); toast('Usuario guardado: '+u);
+}
+
+function editarUsuario(u){
+  var info=APP.usuarios[u]; if(!info) return;
+  document.getElementById('cf-user').value=u;
+  document.getElementById('cf-nombre').value=info.nombre||'';
+  document.getElementById('cf-clave').value=info.clave||'';
+  document.getElementById('cf-rol').value=info.rol||'contador';
+  window.scrollTo({top:0,behavior:'smooth'});
+  toast('Editando '+u+'. Modifique y guarde.');
+}
+
+function eliminarUsuario(u){
+  if(u===APP.user.id){ toast('No puede eliminar su propio usuario'); return; }
+  // Evitar quedar sin ningún admin
+  var admins=Object.keys(APP.usuarios).filter(function(k){return APP.usuarios[k].rol==='admin';});
+  if(APP.usuarios[u].rol==='admin' && admins.length<=1){ toast('Debe quedar al menos un administrador'); return; }
+  if(!confirm('¿Eliminar el usuario '+u+'?')) return;
+  delete APP.usuarios[u];
+  lsSet('cc_usuarios', APP.usuarios);
+  if(fbOk&&navigator.onLine){ db.collection(COLECCION_USERS).doc(u).delete().catch(function(){}); }
+  render(); toast('Usuario eliminado');
+}
+
+// Cargar usuarios desde la nube (combina con semilla; la nube tiene prioridad)
+function cargarUsuariosNube(){
+  if(!fbOk||!navigator.onLine) return;
+  db.collection(COLECCION_USERS).get().then(function(snap){
+    if(!snap.empty){
+      snap.forEach(function(doc){ APP.usuarios[doc.id]=doc.data(); });
+      lsSet('cc_usuarios', APP.usuarios);
+    } else {
+      // Primera vez: subir la semilla a Firebase
+      Object.keys(APP.usuarios).forEach(function(u){
+        db.collection(COLECCION_USERS).doc(u).set(APP.usuarios[u]).catch(function(){});
+      });
+    }
+    // Si el usuario en sesión cambió de rol, refrescar
+    if(APP.user && APP.usuarios[APP.user.id]){
+      APP.user.rol = APP.usuarios[APP.user.id].rol;
+      APP.user.nombre = APP.usuarios[APP.user.id].nombre||APP.user.nombre;
+      lsSet('cc_user', APP.user);
+    }
+  }).catch(function(e){ console.warn('Usuarios nube:',e); });
+}
+
+// Detectar online/offline
+window.addEventListener('online', function(){ if(APP.user){ render(); cargarDesdeNube(); } });
+window.addEventListener('offline', function(){ if(APP.user) render(); });
+
+// Iniciar
+init();
+</script>
+</body>
+</html>
